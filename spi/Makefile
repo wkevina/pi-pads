@@ -1,2 +1,2 @@
 default:
-	gcc -o spi-test spi.c
+	gcc -o build/spi-test spi.c
