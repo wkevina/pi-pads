@@ -80,13 +80,29 @@ int send_button_event(int input_fd, unsigned short code){
 	ev.code = code;
 	ev.value = 0x0001;
 	
-	int ret = write(input_fd, ev, sizeof(ev));
-	
-	ev.value = 0x0000;
-	
-	ret = write(input_fd, ev, sizeof(ev));
+	int ret = write(input_fd, &ev, sizeof(ev));	
+	ev.value = 0x0000;	
+	ret = write(input_fd, &ev, sizeof(ev));
 	
 	return ret;
+}
+
+void poll_user(int input_fd){
+	
+	printf("Press the keys 0-9 to generate button events.");
+	
+	char key;
+	
+	while(1){
+		key = getchar();
+		if (key == 'q' || key == 'Q')
+			break;
+		
+		if (key >= '0' && key <= '9') {
+			if( send_button_event(input_fd, BTN_GAMEPAD + key - 48) < 0 )
+				break;
+		}
+	}	
 }
 
 int main() {
@@ -141,13 +157,14 @@ int main() {
 	}
 	
 	ret = ioctl(uinput_fd, UI_DEV_CREATE);	
+	if (ret < 0) {		
+		printf("Can't create device\n");		
+		exit(EXIT_FAILURE);	
+	}
+		
+	//wait_for_term();
 	
-	ret = send_button_event(uinput_fd, BTN_GAMEPAD);
-	if (ret < 0) {
-		printf("Can't send events\n");
-		exit(EXIT_FAILURE);
-	}	
-	wait_for_term();
+	poll_user(uinput_fd);
 	
 	ret = ioctl(uinput_fd, UI_DEV_DESTROY);
 	close(uinput_fd);
