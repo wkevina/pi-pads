@@ -9,6 +9,8 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sysexits.h>
+
+#include <limits.h>
 	
 #include <string.h>
 
@@ -72,6 +74,19 @@ void wait_for_term(){
 	        break;
 }
 
+int send_sync_event(int input_fd) {
+	
+	struct input_event ev;
+	memset(&ev, 0, sizeof(ev));
+	ev.type = EV_SYN;
+	ev.code = SYN_REPORT;
+	ev.value = 0x0000;
+	
+	int ret = write(input_fd, &ev, sizeof(ev));	
+	
+	
+}
+
 int send_button_event(int input_fd, unsigned short code){
 	
 	struct input_event ev;
@@ -83,7 +98,32 @@ int send_button_event(int input_fd, unsigned short code){
 	int ret = write(input_fd, &ev, sizeof(ev));	
 	ev.value = 0x0000;	
 	ret = write(input_fd, &ev, sizeof(ev));
+	//if (ret <0)
+	//	return ret;
+	//ret = send_sync_event(input_fd);	
+	return ret;
+}
+
+int send_axis_event(int input_fd, unsigned short axis){
+	static char count = 0x00;
 	
+	struct input_event ev;
+	memset(&ev, 0, sizeof(ev));
+	ev.type = EV_ABS;
+	ev.code = axis;
+	if (count % 3 == 0)
+		ev.value = 0;
+	else if (count % 3 == 1) 
+		ev.value = SHRT_MAX;
+	else 
+		ev.value = SHRT_MIN;
+	
+	int ret = write(input_fd, &ev, sizeof(ev));	
+	//if (ret < 0)
+	//	return ret;
+	//ret = send_sync_event(input_fd);	
+	
+	++count;
 	return ret;
 }
 
@@ -93,6 +133,8 @@ void poll_user(int input_fd){
 	
 	char key;
 	
+	
+	
 	while(1){
 		key = getchar();
 		if (key == 'q' || key == 'Q')
@@ -100,6 +142,10 @@ void poll_user(int input_fd){
 		
 		if (key >= '0' && key <= '9') {
 			if( send_button_event(input_fd, BTN_GAMEPAD + key - 48) < 0 )
+				break;
+		}
+		else if (key == 'a' || key == 'A') {
+			if( send_axis_event(input_fd, ABS_X) < 0 )
 				break;
 		}
 	}	
@@ -125,12 +171,23 @@ int main() {
 		printf("Can't set key bit\n");
 		exit(EXIT_FAILURE);
 	}
-	ret = ioctl(uinput_fd, UI_SET_EVBIT, EV_SYN);
+	
+	
+	// Set up absolute axes
+	/////////////////////////////////////////////
+	ret = ioctl(uinput_fd, UI_SET_EVBIT, EV_ABS);
 	if (ret < 0) {
-		printf("Can't set syn bit\n");
+		printf("Can't set abs bit\n");
 		exit(EXIT_FAILURE);
 	}
 	
+	ret = ioctl(uinput_fd, UI_SET_ABSBIT, ABS_X);
+	if (ret < 0) {
+		printf("Can't set abs_x bit\n");
+		exit(EXIT_FAILURE);
+	}
+	///////////////////////////////////////////////
+		
 	int key;
 	for (key = BTN_GAMEPAD; key <= BTN_THUMBR; ++key) {
 		ret = ioctl(uinput_fd, UI_SET_KEYBIT, key);	
@@ -138,6 +195,12 @@ int main() {
 			printf("Can't set all buttons\n");
 			exit(EXIT_FAILURE);
 		}	
+	}
+	
+	ret = ioctl(uinput_fd, UI_SET_EVBIT, EV_SYN);
+	if (ret < 0) {
+		printf("Can't set syn bit\n");
+		exit(EXIT_FAILURE);
 	}
 	
 	struct uinput_user_dev user_device; // Describes the input device for uinput
@@ -149,6 +212,9 @@ int main() {
 	user_device.id.vendor  = 0xF0F0;
 	user_device.id.product = 0xBABA;
 	user_device.id.version = 1;
+	
+	user_device.absmax[ABS_X] = SHRT_MAX;
+	user_device.absmin[ABS_X] = SHRT_MIN;
 
 	ret = write(uinput_fd, &user_device, sizeof(user_device));
 	if (ret < 0) {
